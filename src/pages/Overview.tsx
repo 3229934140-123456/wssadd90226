@@ -78,6 +78,7 @@ interface OccupantInfo {
   hasRemind: boolean
   hasNotify: boolean
   remindCount: number
+  doctorNotifiedAt?: number
   expectedEndTime: number
 }
 
@@ -153,8 +154,9 @@ function OccCard({
             </span>
           )}
           {occupant.hasNotify && (
-            <span className="inline-flex items-center text-[9px] px-1 py-0.5 rounded bg-brand-coral/20 text-brand-coral font-bold">
+            <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-brand-coral/20 text-brand-coral font-bold">
               <Phone size={8} />
+              {formatTime(occupant.doctorNotifiedAt!)}
             </span>
           )}
         </div>
@@ -389,6 +391,7 @@ export default function Overview() {
     if (!customer) return
     const { zone, minRem, maxRem, expectedEnd } = classifyRoom(customer, getStatus)
     const remindCount = customer.bodyParts.reduce((s, bp) => s + (bp.remindCount || 0), 0)
+    const notifiedBp = customer.bodyParts.find((bp) => bp.doctorNotifiedAt)
     occupants.push({
       customer,
       room,
@@ -396,8 +399,9 @@ export default function Overview() {
       minRemaining: minRem,
       maxRemaining: maxRem,
       hasRemind: remindCount > 0,
-      hasNotify: customer.bodyParts.some((bp) => bp.doctorNotifiedAt),
+      hasNotify: !!notifiedBp,
       remindCount,
+      doctorNotifiedAt: notifiedBp?.doctorNotifiedAt,
       expectedEndTime: expectedEnd,
     })
   })

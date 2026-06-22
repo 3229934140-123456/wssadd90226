@@ -23,6 +23,7 @@ interface ClinicState {
   rooms: Room[]
   customers: Customer[]
   operationLogs: OperationLog[]
+  handedOverIds: string[]
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt' | 'queueStatus' | 'projectList'> & { projectList?: string[] }) => Customer
   assignCustomerToRoom: (customerId: string, roomId: string, bodyParts: Omit<BodyPart, 'id' | 'status' | 'pausedDuration' | 'remindCount'>[]) => void
   updateRoomStatus: (roomId: string, status: Room['status']) => void
@@ -40,6 +41,8 @@ interface ClinicState {
   getTodayLogs: () => OperationLog[]
   getTodayCustomers: () => Customer[]
   clearOldRecords: () => void
+  toggleHandover: (customerId: string) => void
+  resetHandover: () => void
 }
 
 export const useClinicStore = create<ClinicState>()(
@@ -48,6 +51,7 @@ export const useClinicStore = create<ClinicState>()(
       rooms: DEFAULT_ROOMS,
       customers: [],
       operationLogs: [],
+      handedOverIds: [],
 
       addCustomer: (c) => {
         const customer: Customer = {
@@ -374,7 +378,20 @@ export const useClinicStore = create<ClinicState>()(
         set((s) => ({
           customers: s.customers.filter((c) => isToday(c.createdAt) || c.queueStatus === 'in_room'),
           operationLogs: s.operationLogs.filter((l) => isToday(l.timestamp)),
+          handedOverIds: [],
         }))
+      },
+
+      toggleHandover: (customerId) => {
+        set((s) => ({
+          handedOverIds: s.handedOverIds.includes(customerId)
+            ? s.handedOverIds.filter((id) => id !== customerId)
+            : [...s.handedOverIds, customerId],
+        }))
+      },
+
+      resetHandover: () => {
+        set({ handedOverIds: [] })
       },
     }),
     {

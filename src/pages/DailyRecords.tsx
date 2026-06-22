@@ -39,15 +39,20 @@ function formatActionText(log: OperationLog): string {
 }
 
 type Tab = 'detail' | 'summary'
+type SummaryMode = 'overview' | 'checklist'
 
 export default function DailyRecords() {
   const customers = useClinicStore((s) => s.customers)
   const rooms = useClinicStore((s) => s.rooms)
   const getTodayLogs = useClinicStore((s) => s.getTodayLogs)
   const getTodayCustomers = useClinicStore((s) => s.getTodayCustomers)
+  const handedOverIds = useClinicStore((s) => s.handedOverIds)
+  const toggleHandover = useClinicStore((s) => s.toggleHandover)
+  const resetHandover = useClinicStore((s) => s.resetHandover)
   const settings = useSettingsStore((s) => s.settings)
 
   const [activeTab, setActiveTab] = useState<Tab>('detail')
+  const [summaryMode, setSummaryMode] = useState<SummaryMode>('overview')
   const [filterRoom, setFilterRoom] = useState<string>('')
   const [filterName, setFilterName] = useState<string>('')
   const [filterSpecial, setFilterSpecial] = useState<string>('')
@@ -104,6 +109,42 @@ export default function DailyRecords() {
     URL.revokeObjectURL(url)
   }
 
+  function getStatusText(c: Customer): string {
+    if (c.queueStatus === 'completed') return '已完成'
+    if (c.queueStatus === 'waiting') return '等待中'
+    const isOverdue = c.bodyParts.some((bp) => bp.status !== 'completed' && getBodyPartStatus(bp as BodyPart) === 'overdue')
+    const isPausing = c.bodyParts.some((bp) => bp.status === 'pausing')
+    if (isOverdue) return '已超时'
+    if (isPausing) return '暂停等待'
+    return '敷麻中'
+  }
+
+  function handleExportHandover() {
+    const header = '房间,顾客,昵称,项目,部位,当前状态,催办次数,医生通知时间,备注\n'
+    const rows = filteredCustomers
+      .filter((c) => c.queueStatus !== 'completed')
+      .map((c) => {
+        const room = roomMap.get(c.roomId)
+        const projectStr = c.projectList.join('; ')
+        const partStr = c.bodyParts.map((bp) => bp.name).join('; ')
+        const totalRemind = c.bodyParts.reduce((s, bp) => s + (bp.remindCount || 0), 0)
+        const notifiedBp = c.bodyParts.find((bp) => bp.doctorNotifiedAt)
+        const notifyTime = notifiedBp?.doctorNotifiedAt ? new Date(notifiedBp.doctorNotifiedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''
+        const statusText = getStatusText(c)
+        return `${room?.name || ''},${c.fullName},${c.nickname},${projectStr},${partStr},${statusText},${totalRemind},${notifyTime},${c.remarks || ''}`
+      })
+      .join('\n')
+
+    const bom = '\uFEFF'
+    const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `交班摘要_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const activeCustomers = filteredCustomers.filter((c) => c.queueStatus === 'in_room')
   const completedCustomers = filteredCustomers.filter((c) => c.queueStatus === 'completed')
   const waitingCustomers = filteredCustomers.filter((c) => c.queueStatus === 'waiting')
@@ -118,6 +159,17 @@ export default function DailyRecords() {
     c.bodyParts.some((bp) => bp.doctorNotifiedAt)
   )
 
+  const keyCustomers = filteredCustomers.filter((c) => {
+    if (c.queueStatus === 'completed') return false
+    const isOverdue = c.bodyParts.some((bp) => bp.status !== 'completed' && getBodyPartStatus(bp as BodyPart) === 'overdue')
+    const isPausing = c.bodyParts.some((bp) => bp.status === 'pausing')
+    const hasNotified = c.bodyParts.some((bp) => bp.doctorNotifiedAt)
+    const hasRemarks = !!c.remarks
+    return isOverdue || isPausing || hasNotified || hasRemarks
+  })
+
+  const keyHandled = keyCustomers.filter((c) => handedOverIds.includes(c.id)).length
+
   return (
     <div className="px-4 pt-4 pb-2">
       <div className="flex items-center justify-between mb-3">
@@ -127,18 +179,32 @@ export default function DailyRecords() {
             共 {filteredCustomers.length} 位顾客 · {todayLogs.length} 条操作
           </p>
         </div>
-        <button
-          onClick={handleExportCSV}
-          disabled={filteredCustomers.length === 0}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-            filteredCustomers.length > 0
-              ? 'bg-brand-mint/10 text-brand-mint hover:bg-brand-mint/20'
-              : 'bg-brand-card text-brand-text-muted cursor-not-allowed'
-          }`}
-        >
-          <Download size={13} />
-          导出CSV
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            onClick={handleExportCSV}
+            disabled={filteredCustomers.length === 0}
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-medium transition-all ${
+              filteredCustomers.length > 0
+                ? 'bg-brand-mint/10 text-brand-mint hover:bg-brand-mint/20'
+                : 'bg-brand-card text-brand-text-muted cursor-not-allowed'
+            }`}
+          >
+            <Download size={12} />
+            详细CSV
+          </button>
+          <button
+            onClick={handleExportHandover}
+            disabled={activeCustomers.length === 0}
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-medium transition-all ${
+              activeCustomers.length > 0
+                ? 'bg-brand-ice/10 text-brand-ice hover:bg-brand-ice/20'
+                : 'bg-brand-card text-brand-text-muted cursor-not-allowed'
+            }`}
+          >
+            <FileText size={12} />
+            交班版
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-1.5 mb-3 p-1 bg-brand-card rounded-xl">
@@ -211,7 +277,33 @@ export default function DailyRecords() {
 
       {activeTab === 'summary' && (
         <div className="space-y-3 animate-fade-in">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="flex gap-1.5 p-1 bg-brand-card rounded-xl">
+            <button
+              onClick={() => setSummaryMode('overview')}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
+                summaryMode === 'overview' ? 'bg-brand-ice/15 text-brand-ice' : 'text-brand-text-dim hover:text-brand-text'
+              }`}
+            >
+              汇总视图
+            </button>
+            <button
+              onClick={() => setSummaryMode('checklist')}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium transition-all relative ${
+                summaryMode === 'checklist' ? 'bg-brand-ice/15 text-brand-ice' : 'text-brand-text-dim hover:text-brand-text'
+              }`}
+            >
+              交接清单
+              {keyHandled > 0 && keyCustomers.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-brand-mint/20 text-brand-mint text-[9px] font-bold">
+                  {keyHandled}/{keyCustomers.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {summaryMode === 'overview' && (
+            <>
+              <div className="grid grid-cols-3 gap-2">
             <div className="p-2.5 rounded-xl bg-brand-mint/10 border border-brand-mint/25">
               <p className="text-[9px] text-brand-mint mb-0.5">进行中</p>
               <p className="text-2xl font-black text-brand-mint font-timer tabular-nums">{activeCustomers.length}</p>
@@ -381,6 +473,87 @@ export default function DailyRecords() {
                   )
                 })}
               </div>
+            </div>
+          )}
+            </>
+          )}
+
+          {summaryMode === 'checklist' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-brand-text-dim">
+                  重点交接项共 {keyCustomers.length} 条，已交代 {keyHandled} 条
+                </p>
+                <button
+                  onClick={resetHandover}
+                  className="px-2 py-1 rounded-lg text-[10px] bg-brand-card text-brand-text-muted border border-brand-border hover:border-brand-text-muted/50 transition-all"
+                >
+                  重置交接
+                </button>
+              </div>
+
+              {keyCustomers.length === 0 && (
+                <div className="text-center py-8 text-brand-text-muted">
+                  <CheckCircle2 size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-xs">暂无重点交接项</p>
+                </div>
+              )}
+
+              {keyCustomers.map((c) => {
+                const room = roomMap.get(c.roomId)
+                const displayName = settings.hideFullName ? c.nickname : c.fullName
+                const isOverdue = c.bodyParts.some((bp) => bp.status !== 'completed' && getBodyPartStatus(bp as BodyPart) === 'overdue')
+                const isPausing = c.bodyParts.some((bp) => bp.status === 'pausing')
+                const hasNotified = c.bodyParts.some((bp) => bp.doctorNotifiedAt)
+                const totalRemind = c.bodyParts.reduce((s, bp) => s + (bp.remindCount || 0), 0)
+                const isHanded = handedOverIds.includes(c.id)
+                const tags: { label: string; color: string }[] = []
+                if (isOverdue) tags.push({ label: '超时', color: 'text-brand-coral bg-brand-coral/10' })
+                if (isPausing) tags.push({ label: '暂停', color: 'text-brand-text-dim bg-brand-text-muted/20' })
+                if (hasNotified) tags.push({ label: '已叫医生', color: 'text-brand-gold bg-brand-gold/10' })
+                if (totalRemind > 0) tags.push({ label: `催办${totalRemind}次`, color: 'text-brand-gold bg-brand-gold/10' })
+                if (c.remarks) tags.push({ label: '有备注', color: 'text-brand-ice bg-brand-ice/10' })
+
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => toggleHandover(c.id)}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      isHanded
+                        ? 'bg-brand-mint/5 border-brand-mint/30 opacity-70'
+                        : 'bg-brand-card border-brand-border hover:border-brand-ice/50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 ${
+                        isHanded ? 'bg-brand-mint border-brand-mint' : 'border-brand-text-muted/50'
+                      }`}>
+                        {isHanded && <CheckCircle2 size={12} className="text-white" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-[10px] font-bold text-brand-mint bg-brand-mint/10 px-1.5 py-0.5 rounded shrink-0">
+                            {room?.name}
+                          </span>
+                          <span className="text-sm font-medium text-brand-text truncate">{displayName}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mb-1.5">
+                          {tags.map((t, i) => (
+                            <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded ${t.color}`}>
+                              {t.label}
+                            </span>
+                          ))}
+                        </div>
+                        {c.remarks && (
+                          <p className="text-[10px] text-brand-gold bg-brand-gold/5 px-2 py-1 rounded line-clamp-2">
+                            📝 {c.remarks}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

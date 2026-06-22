@@ -27,6 +27,7 @@ export default function ScanToStart() {
   const [manualRemarks, setManualRemarks] = useState('')
   const [parsedExtraItems, setParsedExtraItems] = useState<string[]>([])
   const [parsedProjectList, setParsedProjectList] = useState<string[]>([])
+  const [unmatchedParts, setUnmatchedParts] = useState<string[]>([])
   const [pasteText, setPasteText] = useState('')
   const [parseError, setParseError] = useState('')
   const [showSuccess, setShowSuccess] = useState(false)
@@ -42,7 +43,13 @@ export default function ScanToStart() {
       setParsedExtraItems(data.extraItems || [])
       setParsedProjectList(data.projectList || [data.project])
       if (data.bodyParts.length > 0) {
-        setSelectedParts(data.bodyParts.filter((p) => BODY_PART_OPTIONS.includes(p)))
+        const matched = data.bodyParts.filter((p) => BODY_PART_OPTIONS.includes(p))
+        const unmatched = data.bodyParts.filter((p) => !BODY_PART_OPTIONS.includes(p))
+        setSelectedParts(matched)
+        setUnmatchedParts(unmatched)
+      } else {
+        setSelectedParts([])
+        setUnmatchedParts([])
       }
       setQrParsed(true)
       setParseError('')
@@ -186,26 +193,33 @@ export default function ScanToStart() {
       {inputMode === 'paste' && (
         <div className="mb-4 space-y-3">
           <div>
-            <label className="text-xs text-brand-text-dim mb-1 block">{'\u7C98\u8D34\u6CBB\u7597\u5355\u4E8C\u7EF4\u7801\u5185\u5BB9'}</label>
+            <label className="text-xs text-brand-text-dim mb-1 block">粘贴治疗单内容（支持 JSON、键值对、换行分隔）</label>
             <textarea
               value={pasteText}
               onChange={(e) => { setPasteText(e.target.value); setParseError('') }}
-              placeholder={'{\n  "fullName": "\u5F20\u7F8E\u7F8E",\n  "project": "\u70ED\u739B\u5409",\n  "bodyParts": ["\u989D\u5934", "\u4E0B\u988C"],\n  "remarks": "\u8FC7\u654F\u4F53\u8D28"\n}'}
-              rows={3}
-              className="w-full px-3 py-2 rounded-lg bg-brand-card border border-brand-border text-brand-text text-xs placeholder:text-brand-text-muted focus:outline-none focus:border-brand-mint font-mono"
+              placeholder={`姓名：张美美
+项目：热玛吉
+部位：额头、下颌、面颊
+附加项目：水光针、皮秒
+备注：过敏体质，麻药用量减半`}
+              rows={6}
+              className="w-full px-3 py-2 rounded-lg bg-brand-card border border-brand-border text-brand-text text-xs placeholder:text-brand-text-muted focus:outline-none focus:border-brand-mint font-mono leading-relaxed"
             />
           </div>
           <button
             onClick={handlePaste}
             disabled={!pasteText.trim()}
-            className={`w-full py-2 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+            className={`w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
               pasteText.trim() ? 'bg-brand-mint/10 text-brand-mint hover:bg-brand-mint/20' : 'bg-brand-card text-brand-text-muted cursor-not-allowed'
             }`}
           >
             <ClipboardPaste size={14} />
-            {'\u89E3\u6790\u5E76\u586B\u5145'}
+            解析并填充
           </button>
           {parseError && <p className="text-xs text-brand-coral">{parseError}</p>}
+          <p className="text-[10px] text-brand-text-muted">
+            支持分隔符：逗号(，,)、顿号(、)、分号(；;)、加号(+)、竖线(|)、换行
+          </p>
         </div>
       )}
 
@@ -227,7 +241,12 @@ export default function ScanToStart() {
             ))}
           </div>
           {selectedParts.length > 0 && (
-            <p className="text-xs text-brand-text-dim mt-1.5">部位: {selectedParts.join('、')}</p>
+            <p className="text-xs text-brand-text-dim mt-1.5">已勾选部位: {selectedParts.join('、')}</p>
+          )}
+          {unmatchedParts.length > 0 && (
+            <p className="text-[11px] text-brand-gold mt-1">
+              ⚠️ 未识别部位: {unmatchedParts.join('、')}（请在下方手动选择）
+            </p>
           )}
           {effectiveRemarks && (
             <p className="text-xs text-brand-gold mt-1">备注: {effectiveRemarks}</p>
