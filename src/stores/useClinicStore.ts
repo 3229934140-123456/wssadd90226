@@ -23,7 +23,7 @@ interface ClinicState {
   rooms: Room[]
   customers: Customer[]
   operationLogs: OperationLog[]
-  addCustomer: (c: Omit<Customer, 'id' | 'createdAt' | 'queueStatus'>) => Customer
+  addCustomer: (c: Omit<Customer, 'id' | 'createdAt' | 'queueStatus' | 'projectList'> & { projectList?: string[] }) => Customer
   assignCustomerToRoom: (customerId: string, roomId: string, bodyParts: Omit<BodyPart, 'id' | 'status' | 'pausedDuration' | 'remindCount'>[]) => void
   updateRoomStatus: (roomId: string, status: Room['status']) => void
   updateBodyPartStatus: (customerId: string, bodyPartId: string, status: BodyPart['status']) => void
@@ -52,6 +52,7 @@ export const useClinicStore = create<ClinicState>()(
       addCustomer: (c) => {
         const customer: Customer = {
           ...c,
+          projectList: c.projectList && c.projectList.length > 0 ? c.projectList : [c.project || ''],
           id: generateId(),
           createdAt: Date.now(),
           queueStatus: 'waiting',
@@ -378,7 +379,7 @@ export const useClinicStore = create<ClinicState>()(
     }),
     {
       name: 'anesthetimer-clinic-v2',
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as {
           customers?: Customer[]
@@ -393,6 +394,14 @@ export const useClinicStore = create<ClinicState>()(
                 ...bp,
                 remindCount: (bp as { remindCount?: number }).remindCount ?? 0,
               })),
+            }))
+          }
+        }
+        if (version < 3) {
+          if (state?.customers) {
+            state.customers = state.customers.map((c) => ({
+              ...c,
+              projectList: (c as { projectList?: string[] }).projectList || [c.project || ''],
             }))
           }
         }

@@ -26,6 +26,7 @@ export default function ScanToStart() {
   const [manualProject, setManualProject] = useState('')
   const [manualRemarks, setManualRemarks] = useState('')
   const [parsedExtraItems, setParsedExtraItems] = useState<string[]>([])
+  const [parsedProjectList, setParsedProjectList] = useState<string[]>([])
   const [pasteText, setPasteText] = useState('')
   const [parseError, setParseError] = useState('')
   const [showSuccess, setShowSuccess] = useState(false)
@@ -39,13 +40,14 @@ export default function ScanToStart() {
       setManualProject(data.project)
       setManualRemarks(data.remarks || '')
       setParsedExtraItems(data.extraItems || [])
+      setParsedProjectList(data.projectList || [data.project])
       if (data.bodyParts.length > 0) {
         setSelectedParts(data.bodyParts.filter((p) => BODY_PART_OPTIONS.includes(p)))
       }
       setQrParsed(true)
       setParseError('')
     } else {
-      setParseError('\u65E0\u6CD5\u8BC6\u522B\u4E8C\u7EF4\u7801\u5185\u5BB9\uFF0C\u8BF7\u624B\u52A8\u586B\u5199')
+      setParseError('无法识别二维码内容，请手动填写')
     }
   }, [])
 
@@ -74,11 +76,15 @@ export default function ScanToStart() {
 
   function handleStart() {
     let customerId = selectedCustomerId
+    const projectList = selectedCustomerId
+      ? (customers.find((c) => c.id === selectedCustomerId)?.projectList || [])
+      : (parsedProjectList.length > 0 ? parsedProjectList : (manualProject ? [manualProject] : []))
     if (!customerId && manualName) {
       const c = addCustomer({
         fullName: manualName,
         nickname: manualNickname || manualName.slice(0, 2),
         project: manualProject,
+        projectList,
         remarks: manualRemarks || undefined,
         bodyParts: [],
         roomId: '',
@@ -207,21 +213,24 @@ export default function ScanToStart() {
         <div className="p-3 rounded-xl bg-brand-mint/10 border border-brand-mint/20 animate-fade-in mb-4">
           <div className="flex items-center gap-2 mb-1.5">
             <Check size={14} className="text-brand-mint" />
-            <span className="text-xs text-brand-mint font-medium">{'\u4E8C\u7EF4\u7801\u5DF2\u8BC6\u522B - \u8BF7\u6838\u5BF9\u4FE1\u606F'}</span>
+            <span className="text-xs text-brand-mint font-medium">二维码已识别 - 请核对信息</span>
           </div>
           <p className="text-sm text-brand-text">
             <span className="font-medium">{manualName}</span>
             {manualNickname && manualNickname !== manualName && <span className="text-brand-text-dim">({manualNickname})</span>}
-            {' '}\u00B7 {manualProject || '\u672A\u586B\u9879\u76EE'}
           </p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {parsedProjectList.map((p, i) => (
+              <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-brand-ice/15 text-brand-ice">
+                {p}
+              </span>
+            ))}
+          </div>
           {selectedParts.length > 0 && (
-            <p className="text-xs text-brand-text-dim mt-0.5">{'\u90E8\u4F4D'}: {selectedParts.join('\u3001')}</p>
+            <p className="text-xs text-brand-text-dim mt-1.5">部位: {selectedParts.join('、')}</p>
           )}
           {effectiveRemarks && (
-            <p className="text-xs text-brand-gold mt-0.5">{'\u5907\u6CE8'}: {effectiveRemarks}</p>
-          )}
-          {parsedExtraItems.length > 0 && (
-            <p className="text-xs text-brand-ice mt-0.5">{'\u9644\u52A0\u9879\u76EE'}: {parsedExtraItems.join('\u3001')}</p>
+            <p className="text-xs text-brand-gold mt-1">备注: {effectiveRemarks}</p>
           )}
         </div>
       )}
@@ -323,7 +332,16 @@ export default function ScanToStart() {
                   <div className="text-sm font-medium text-brand-text truncate">
                     {settings.hideFullName ? c.nickname : c.fullName}
                   </div>
-                  <div className="text-xs text-brand-text-dim truncate">{c.project}</div>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {c.projectList.slice(0, 2).map((p, i) => (
+                      <span key={i} className="text-[10px] text-brand-text-dim bg-brand-bg px-1.5 py-0.5 rounded">
+                        {p}
+                      </span>
+                    ))}
+                    {c.projectList.length > 2 && (
+                      <span className="text-[10px] text-brand-text-muted">+{c.projectList.length - 2}</span>
+                    )}
+                  </div>
                 </div>
                 {c.remarks && <FileText size={14} className="text-brand-gold" />}
               </button>

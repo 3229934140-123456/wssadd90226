@@ -91,7 +91,16 @@ function RoomCard({ room, customer }: { room: Room; customer?: Customer }) {
         </div>
         <div className="truncate min-w-0">
           <span className="text-xs font-semibold text-brand-text truncate">{displayName}</span>
-          <span className="text-[9px] text-brand-text-dim ml-1 truncate">{customer.project}</span>
+          <div className="flex flex-wrap gap-0.5 mt-0.5">
+            {customer.projectList.slice(0, 2).map((p, i) => (
+              <span key={i} className="text-[9px] text-brand-text-dim truncate max-w-full">
+                {p}{i === 0 && customer.projectList.length > 1 ? ' · ' : ''}
+              </span>
+            ))}
+            {customer.projectList.length > 2 && (
+              <span className="text-[9px] text-brand-text-muted">+{customer.projectList.length - 2}</span>
+            )}
+          </div>
         </div>
       </div>
 

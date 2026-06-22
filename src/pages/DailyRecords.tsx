@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import { useClinicStore } from '@/stores/useClinicStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { formatTime } from '@/utils/time'
-import { FileText, Download, MapPin, User, StickyNote, Bell, Phone } from 'lucide-react'
-import type { OperationLog, Customer } from '@/types'
+import { formatTime, getBodyPartStatus, getBodyPartRemaining, getExpectedEndTime } from '@/utils/time'
+import {
+  FileText, Download, MapPin, User, StickyNote, Bell, Phone,
+  Clock, CheckCircle2, AlertTriangle, Pause, ListTodo, Sparkles
+} from 'lucide-react'
+import type { OperationLog, Customer, BodyPart } from '@/types'
 
 const ACTION_LABELS: Record<string, string> = {
-  start: '\u5F00\u59CB\u6577\u9EBB',
-  evaluate: '\u5DF2\u8BC4\u4F30\u53EF\u64CD\u4F5C',
-  remove: '\u5DF2\u63ED\u9EBB\u5E76\u6E05\u6D01',
-  pause: '\u6682\u505C\u8BA1\u65F6',
-  resume: '\u6062\u590D\u8BA1\u65F6',
-  complete: '\u6D41\u7A0B\u5B8C\u6210',
-  remind: '\u5DF2\u50AC\u529E',
-  notify_doctor: '\u5DF2\u901A\u77E5\u533B\u751F',
+  start: '开始敷麻',
+  evaluate: '已评估可操作',
+  remove: '已揭麻并清洁',
+  pause: '暂停计时',
+  resume: '恢复计时',
+  complete: '流程完成',
+  remind: '已催办',
+  notify_doctor: '已通知医生',
 }
 
 const ACTION_COLORS: Record<string, string> = {
@@ -35,6 +38,8 @@ function formatActionText(log: OperationLog): string {
   return base
 }
 
+type Tab = 'detail' | 'summary'
+
 export default function DailyRecords() {
   const customers = useClinicStore((s) => s.customers)
   const rooms = useClinicStore((s) => s.rooms)
@@ -42,8 +47,10 @@ export default function DailyRecords() {
   const getTodayCustomers = useClinicStore((s) => s.getTodayCustomers)
   const settings = useSettingsStore((s) => s.settings)
 
+  const [activeTab, setActiveTab] = useState<Tab>('detail')
   const [filterRoom, setFilterRoom] = useState<string>('')
   const [filterName, setFilterName] = useState<string>('')
+  const [filterSpecial, setFilterSpecial] = useState<string>('')
 
   const todayLogs = getTodayLogs()
   const todayCustomers = getTodayCustomers()
@@ -53,6 +60,15 @@ export default function DailyRecords() {
     if (filterName) {
       const name = settings.hideFullName ? c.nickname : c.fullName
       if (!name.includes(filterName)) return false
+    }
+    if (filterSpecial === 'remarks' && !c.remarks) return false
+    if (filterSpecial === 'notify') {
+      const hasNotify = c.bodyParts.some((bp) => bp.doctorNotifiedAt)
+      if (!hasNotify) return false
+    }
+    if (filterSpecial === 'remind') {
+      const totalRemind = c.bodyParts.reduce((s, bp) => s + (bp.remindCount || 0), 0)
+      if (totalRemind < 2) return false
     }
     return true
   })
@@ -66,13 +82,14 @@ export default function DailyRecords() {
   }
 
   function handleExportCSV() {
-    const header = '\u987E\u5BA2,\u6635\u79F0,\u9879\u76EE,\u90E8\u4F4D,\u623F\u95F4,\u64CD\u4F5C,\u65F6\u95F4,\u64CD\u4F5C\u4EBA,\u89D2\u8272,\u5907\u6CE8\n'
+    const header = '顾客,昵称,项目,部位,房间,操作,时间,操作人,角色,备注\n'
     const rows = filteredCustomers
       .flatMap((c) =>
         getCustomerTimeline(c).map((l) => {
           const room = roomMap.get(l.roomId)
+          const projectStr = c.projectList.join('; ')
           const remarkForLog = l.action === 'start' ? (c.remarks || '') : ''
-          return `${c.fullName},${c.nickname},${c.project},${l.bodyPartName || ''},${room?.name || ''},${formatActionText(l)},${new Date(l.timestamp).toLocaleString('zh-CN')},${l.operator},${l.operatorRole === 'doctor' ? '\u533B\u751F' : '\u62A4\u58EB'},${remarkForLog}`
+          return `${c.fullName},${c.nickname},${projectStr},${l.bodyPartName || ''},${room?.name || ''},${formatActionText(l)},${new Date(l.timestamp).toLocaleString('zh-CN')},${l.operator},${l.operatorRole === 'doctor' ? '医生' : '护士'},${remarkForLog}`
         })
       )
       .join('\n')
@@ -82,18 +99,32 @@ export default function DailyRecords() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `\u6577\u9EBB\u8BB0\u5F55_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`
+    a.download = `敷麻记录_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  const activeCustomers = filteredCustomers.filter((c) => c.queueStatus === 'in_room')
+  const completedCustomers = filteredCustomers.filter((c) => c.queueStatus === 'completed')
+  const waitingCustomers = filteredCustomers.filter((c) => c.queueStatus === 'waiting')
+
+  const overdueCustomers = activeCustomers.filter((c) =>
+    c.bodyParts.some((bp) => bp.status !== 'completed' && getBodyPartStatus(bp as BodyPart) === 'overdue')
+  )
+  const pausingCustomers = activeCustomers.filter((c) =>
+    c.bodyParts.some((bp) => bp.status === 'pausing')
+  )
+  const notifiedCustomers = activeCustomers.filter((c) =>
+    c.bodyParts.some((bp) => bp.doctorNotifiedAt)
+  )
 
   return (
     <div className="px-4 pt-4 pb-2">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h1 className="text-xl font-bold text-brand-text">{'\u4ECA\u65E5\u8BB0\u5F55'}</h1>
+          <h1 className="text-xl font-bold text-brand-text">今日记录</h1>
           <p className="text-xs text-brand-text-muted mt-0.5">
-            {'\u5171'} {filteredCustomers.length} {'\u4F4D\u987E\u5BA2'} \u00B7 {todayLogs.length} {'\u6761\u64CD\u4F5C'}
+            共 {filteredCustomers.length} 位顾客 · {todayLogs.length} 条操作
           </p>
         </div>
         <button
@@ -106,18 +137,39 @@ export default function DailyRecords() {
           }`}
         >
           <Download size={13} />
-          {'\u5BFC\u51FACSV'}
+          导出CSV
         </button>
       </div>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-1.5 mb-3 p-1 bg-brand-card rounded-xl">
+        <button
+          onClick={() => setActiveTab('detail')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
+            activeTab === 'detail' ? 'bg-brand-mint/15 text-brand-mint' : 'text-brand-text-dim hover:text-brand-text'
+          }`}
+        >
+          <ListTodo size={13} />
+          详细记录
+        </button>
+        <button
+          onClick={() => setActiveTab('summary')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
+            activeTab === 'summary' ? 'bg-brand-mint/15 text-brand-mint' : 'text-brand-text-dim hover:text-brand-text'
+          }`}
+        >
+          <Sparkles size={13} />
+          交班摘要
+        </button>
+      </div>
+
+      <div className="flex gap-2 mb-3">
         <div className="flex-1 relative">
           <User size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-brand-text-muted" />
           <input
             type="text"
             value={filterName}
             onChange={(e) => setFilterName(e.target.value)}
-            placeholder={'\u6309\u6635\u79F0\u7B5B\u9009'}
+            placeholder="按昵称筛选"
             className="w-full pl-7 pr-3 py-2 rounded-lg bg-brand-card border border-brand-border text-brand-text text-xs placeholder:text-brand-text-muted focus:outline-none focus:border-brand-mint"
           />
         </div>
@@ -128,7 +180,7 @@ export default function DailyRecords() {
             onChange={(e) => setFilterRoom(e.target.value)}
             className="pl-7 pr-7 py-2 rounded-lg bg-brand-card border border-brand-border text-brand-text text-xs focus:outline-none focus:border-brand-mint appearance-none"
           >
-            <option value="">{'\u5168\u90E8\u623F\u95F4'}</option>
+            <option value="">全部房间</option>
             {rooms.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
@@ -136,21 +188,222 @@ export default function DailyRecords() {
         </div>
       </div>
 
-      {filteredCustomers.length === 0 ? (
+      <div className="flex gap-1.5 mb-3 flex-wrap">
+        {[
+          { key: '', label: '全部' },
+          { key: 'remarks', label: '有备注' },
+          { key: 'notify', label: '已通知医生' },
+          { key: 'remind', label: '催办≥2次' },
+        ].map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilterSpecial(f.key)}
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${
+              filterSpecial === f.key
+                ? 'bg-brand-ice/15 text-brand-ice border border-brand-ice/30'
+                : 'bg-brand-card text-brand-text-dim border border-brand-border hover:border-brand-text-muted/50'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'summary' && (
+        <div className="space-y-3 animate-fade-in">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="p-2.5 rounded-xl bg-brand-mint/10 border border-brand-mint/25">
+              <p className="text-[9px] text-brand-mint mb-0.5">进行中</p>
+              <p className="text-2xl font-black text-brand-mint font-timer tabular-nums">{activeCustomers.length}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-brand-ice/10 border border-brand-ice/25">
+              <p className="text-[9px] text-brand-ice mb-0.5">已完成</p>
+              <p className="text-2xl font-black text-brand-ice font-timer tabular-nums">{completedCustomers.length}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-brand-gold/10 border border-brand-gold/25">
+              <p className="text-[9px] text-brand-gold mb-0.5">等待中</p>
+              <p className="text-2xl font-black text-brand-gold font-timer tabular-nums">{waitingCustomers.length}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="p-2.5 rounded-xl bg-brand-coral/10 border border-brand-coral/25">
+              <p className="text-[9px] text-brand-coral mb-0.5">已超时</p>
+              <p className="text-2xl font-black text-brand-coral font-timer tabular-nums">{overdueCustomers.length}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-brand-text-muted/10 border border-brand-text-muted/25">
+              <p className="text-[9px] text-brand-text-dim mb-0.5">暂停等待</p>
+              <p className="text-2xl font-black text-brand-text-dim font-timer tabular-nums">{pausingCustomers.length}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-brand-gold/10 border border-brand-gold/25">
+              <p className="text-[9px] text-brand-gold mb-0.5">已叫医生</p>
+              <p className="text-2xl font-black text-brand-gold font-timer tabular-nums">{notifiedCustomers.length}</p>
+            </div>
+          </div>
+
+          {overdueCustomers.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-brand-coral/8 border border-brand-coral/30">
+              <div className="flex items-center gap-1.5 mb-2">
+                <AlertTriangle size={12} className="text-brand-coral" />
+                <span className="text-xs font-bold text-brand-coral">超时未处理 ({overdueCustomers.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {overdueCustomers.map((c) => {
+                  const room = roomMap.get(c.roomId)
+                  const displayName = settings.hideFullName ? c.nickname : c.fullName
+                  const overdueParts = c.bodyParts.filter((bp) => bp.status !== 'completed' && getBodyPartStatus(bp as BodyPart) === 'overdue')
+                  return (
+                    <div key={c.id} className="flex items-center justify-between text-[11px]">
+                      <span className="text-brand-text font-medium truncate">
+                        {room?.name} · {displayName}
+                      </span>
+                      <span className="text-brand-coral font-medium shrink-0 ml-2">
+                        {overdueParts.length}部位超时
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {notifiedCustomers.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-brand-gold/8 border border-brand-gold/30">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Phone size={12} className="text-brand-gold" />
+                <span className="text-xs font-bold text-brand-gold">已通知医生 ({notifiedCustomers.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {notifiedCustomers.map((c) => {
+                  const room = roomMap.get(c.roomId)
+                  const displayName = settings.hideFullName ? c.nickname : c.fullName
+                  const notifiedBp = c.bodyParts.find((bp) => bp.doctorNotifiedAt)
+                  return (
+                    <div key={c.id} className="flex items-center justify-between text-[11px]">
+                      <span className="text-brand-text font-medium truncate">
+                        {room?.name} · {displayName}
+                      </span>
+                      <span className="text-brand-gold font-timer shrink-0 ml-2">
+                        {notifiedBp?.doctorNotifiedAt ? formatTime(notifiedBp.doctorNotifiedAt) : ''}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {pausingCustomers.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-brand-text-muted/8 border border-brand-text-muted/30">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Pause size={12} className="text-brand-text-dim" />
+                <span className="text-xs font-bold text-brand-text-dim">暂停等待 ({pausingCustomers.length})</span>
+              </div>
+              <div className="space-y-1.5">
+                {pausingCustomers.map((c) => {
+                  const room = roomMap.get(c.roomId)
+                  const displayName = settings.hideFullName ? c.nickname : c.fullName
+                  return (
+                    <div key={c.id} className="flex items-center justify-between text-[11px]">
+                      <span className="text-brand-text font-medium truncate">
+                        {room?.name} · {displayName}
+                      </span>
+                      <span className="text-brand-text-dim shrink-0 ml-2">
+                        顾客暂离
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeCustomers.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-brand-card border border-brand-border">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Clock size={12} className="text-brand-mint" />
+                <span className="text-xs font-bold text-brand-text">进行中房间一览 ({activeCustomers.length})</span>
+              </div>
+              <div className="space-y-2">
+                {activeCustomers
+                  .sort((a, b) => {
+                    const aOverdue = a.bodyParts.some((bp) => bp.status !== 'completed' && getBodyPartStatus(bp as BodyPart) === 'overdue')
+                    const bOverdue = b.bodyParts.some((bp) => bp.status !== 'completed' && getBodyPartStatus(bp as BodyPart) === 'overdue')
+                    if (aOverdue && !bOverdue) return -1
+                    if (!aOverdue && bOverdue) return 1
+                    return 0
+                  })
+                  .map((c) => {
+                    const room = roomMap.get(c.roomId)
+                    const displayName = settings.hideFullName ? c.nickname : c.fullName
+                    const minRem = Math.min(...c.bodyParts.filter((bp) => bp.status !== 'completed').map((bp) => getBodyPartRemaining(bp as BodyPart)))
+                    const status = minRem <= 0 ? 'overdue' : 'active'
+                    const isPausing = c.bodyParts.some((bp) => bp.status === 'pausing')
+                    return (
+                      <div key={c.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] font-bold text-brand-mint bg-brand-mint/10 px-1.5 py-0.5 rounded shrink-0">
+                            {room?.name}
+                          </span>
+                          <span className="text-[11px] text-brand-text font-medium truncate">{displayName}</span>
+                          {c.remarks && <StickyNote size={10} className="text-brand-gold shrink-0" />}
+                        </div>
+                        <span className={`font-timer text-[11px] font-bold tabular-nums shrink-0 ml-2 ${
+                          isPausing ? 'text-brand-text-dim' :
+                          status === 'overdue' ? 'text-brand-coral' : 'text-brand-mint'
+                        }`}>
+                          {isPausing ? '暂停' : minRem <= 0 ? '超时' : `${Math.floor(minRem/60000)}分`}
+                        </span>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
+
+          {completedCustomers.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-brand-card/60 border border-brand-border/60">
+              <div className="flex items-center gap-1.5 mb-2">
+                <CheckCircle2 size={12} className="text-brand-text-dim" />
+                <span className="text-xs font-bold text-brand-text-dim">今日已完成 ({completedCustomers.length})</span>
+              </div>
+              <div className="space-y-1">
+                {completedCustomers.map((c) => {
+                  const room = roomMap.get(c.roomId)
+                  const displayName = settings.hideFullName ? c.nickname : c.fullName
+                  return (
+                    <div key={c.id} className="flex items-center justify-between text-[11px]">
+                      <span className="text-brand-text-muted truncate">
+                        {room?.name} · {displayName}
+                      </span>
+                      <CheckCircle2 size={11} className="text-brand-mint/60 shrink-0 ml-2" />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'detail' && filteredCustomers.length === 0 && (
         <div className="text-center py-16 text-brand-text-muted">
           <FileText size={48} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">{'\u4ECA\u65E5\u6682\u65E0\u8BB0\u5F55'}</p>
+          <p className="text-sm">今日暂无记录</p>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'detail' && filteredCustomers.length > 0 && (
         <div className="flex flex-col gap-3.5">
           {filteredCustomers.map((c) => {
             const timeline = getCustomerTimeline(c)
             const room = roomMap.get(c.roomId)
             const displayName = settings.hideFullName ? c.nickname : c.fullName
-            const partsList = c.bodyParts.map((bp) => bp.name).join('\u3001')
+            const partsList = c.bodyParts.map((bp) => bp.name).join('、')
             const isActive = c.queueStatus === 'in_room'
-            const hasRemind = timeline.some((l) => l.action === 'remind')
-            const hasNotify = timeline.some((l) => l.action === 'notify_doctor')
+            const totalRemind = c.bodyParts.reduce((s, bp) => s + (bp.remindCount || 0), 0)
+            const hasRemind = totalRemind > 0
+            const hasNotify = c.bodyParts.some((bp) => bp.doctorNotifiedAt)
 
             return (
               <div key={c.id} className="rounded-xl border border-brand-border bg-brand-card p-3.5 animate-fade-in">
@@ -165,19 +418,30 @@ export default function DailyRecords() {
                         {hasRemind && (
                           <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-brand-gold/15 text-brand-gold">
                             <Bell size={9} />
-                            {timeline.filter((l) => l.action === 'remind').length}{'\u6B21\u50AC'}
+                            {totalRemind}次催
                           </span>
                         )}
                         {hasNotify && (
                           <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-brand-coral/15 text-brand-coral">
                             <Phone size={9} />
-                            {'\u5DF2\u901A\u77E5'}
+                            已通知
                           </span>
                         )}
                       </div>
                       <div className="text-[10px] text-brand-text-dim leading-tight">
-                        {c.project} \u00B7 {partsList || '\u672A\u9009\u90E8\u4F4D'} \u00B7 {room?.name || '-'}
+                        <span>{partsList || '未选部位'}</span>
+                        <span className="mx-1">·</span>
+                        <span>{room?.name || '-'}</span>
                       </div>
+                      {c.projectList.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {c.projectList.map((p, i) => (
+                            <span key={i} className="text-[9px] text-brand-ice bg-brand-ice/10 px-1.5 py-0.5 rounded">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${
@@ -185,7 +449,7 @@ export default function DailyRecords() {
                     c.queueStatus === 'completed' ? 'text-brand-text-muted bg-brand-bg/50' :
                     'text-brand-gold bg-brand-gold/10'
                   }`}>
-                    {isActive ? '\u8FDB\u884C\u4E2D' : c.queueStatus === 'completed' ? '\u5DF2\u5B8C\u6210' : '\u7B49\u5F85\u4E2D'}
+                    {isActive ? '进行中' : c.queueStatus === 'completed' ? '已完成' : '等待中'}
                   </span>
                 </div>
 
@@ -210,7 +474,7 @@ export default function DailyRecords() {
                             <span className="font-timer text-brand-text-dim tabular-nums w-10 shrink-0">{formatTime(log.timestamp)}</span>
                             <span className="text-brand-text font-medium">{text}</span>
                             <span className="text-brand-text-muted">
-                              {log.operator}({log.operatorRole === 'doctor' ? '\u533B' : '\u62A4'})
+                              {log.operator}({log.operatorRole === 'doctor' ? '医' : '护'})
                             </span>
                           </div>
                         </div>

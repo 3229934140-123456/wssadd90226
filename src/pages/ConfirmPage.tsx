@@ -278,11 +278,22 @@ export default function ConfirmPage() {
             {hasOverdue && <AlertTriangle size={16} className="text-brand-coral" />}
           </h1>
           <p className="text-[10px] text-brand-text-muted">
-            {displayName} · {customer.project}
+            {displayName} · {customer.projectList[0] || ''}
             {customer.bodyParts.length > 0 && ` · ${customer.bodyParts.length}个部位`}
+            {customer.projectList.length > 1 && ` · +${customer.projectList.length - 1}项`}
           </p>
         </div>
       </div>
+
+      {customer.projectList.length > 1 && (
+        <div className="mb-2.5 flex flex-wrap gap-1.5">
+          {customer.projectList.map((p, i) => (
+            <span key={i} className="px-2 py-0.5 rounded-full text-[10px] bg-brand-ice/12 text-brand-ice border border-brand-ice/20">
+              {p}
+            </span>
+          ))}
+        </div>
+      )}
 
       {customer.remarks && (
         <div className="mb-3 p-2.5 rounded-xl bg-brand-gold/8 border border-brand-gold/25 flex items-start gap-1.5 animate-fade-in">

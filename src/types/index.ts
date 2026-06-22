@@ -19,6 +19,7 @@ export interface Customer {
   fullName: string
   nickname: string
   project: string
+  projectList: string[]
   remarks?: string
   bodyParts: BodyPart[]
   roomId: string
