@@ -3,6 +3,8 @@ export interface QRCodeData {
   nickname: string
   project: string
   bodyParts: string[]
+  remarks?: string
+  extraItems?: string[]
 }
 
 export function parseQRCode(text: string): QRCodeData | null {
@@ -16,6 +18,10 @@ export function parseQRCode(text: string): QRCodeData | null {
         bodyParts: Array.isArray(data.bodyParts || data.parts || data.areas)
           ? (data.bodyParts || data.parts || data.areas).filter((p: unknown) => typeof p === 'string')
           : [],
+        remarks: data.remarks || data.note || data.notes || data.comment,
+        extraItems: Array.isArray(data.extraItems || data.items || data.services)
+          ? (data.extraItems || data.items || data.services).filter((p: unknown) => typeof p === 'string')
+          : undefined,
       }
     }
   } catch {
@@ -34,6 +40,8 @@ export function parseQRCode(text: string): QRCodeData | null {
       nickname: pairs.nickname || pairs.nick || '',
       project: pairs.project || pairs.treatment || pairs.item || '',
       bodyParts: pairs.bodyParts ? pairs.bodyParts.split(/[+,]/) : pairs.parts ? pairs.parts.split(/[+,]/) : [],
+      remarks: pairs.remarks || pairs.note || pairs.comment,
+      extraItems: pairs.extraItems ? pairs.extraItems.split(/[+,]/) : undefined,
     }
   }
 

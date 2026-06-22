@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import BottomNav from '@/components/BottomNav'
 import QueueWall from '@/pages/QueueWall'
+import Overview from '@/pages/Overview'
 import RoomTimer from '@/pages/RoomTimer'
 import ScanToStart from '@/pages/ScanToStart'
 import ConfirmSelect from '@/pages/ConfirmSelect'
@@ -27,6 +28,7 @@ export default function App() {
       <div className="min-h-screen bg-brand-bg pb-18">
         <Routes>
           <Route path="/" element={<QueueWall />} />
+          <Route path="/overview" element={<Overview />} />
           <Route path="/rooms" element={<RoomTimer />} />
           <Route path="/scan" element={<ScanToStart />} />
           <Route path="/confirm-select" element={<ConfirmSelect />} />

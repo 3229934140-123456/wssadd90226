@@ -10,6 +10,8 @@ export interface BodyPart {
   pausedDuration: number
   evaluatedAt?: number
   removedAt?: number
+  remindCount: number
+  doctorNotifiedAt?: number
 }
 
 export interface Customer {
@@ -17,6 +19,7 @@ export interface Customer {
   fullName: string
   nickname: string
   project: string
+  remarks?: string
   bodyParts: BodyPart[]
   roomId: string
   queueStatus: 'waiting' | 'in_room' | 'completed'
@@ -30,11 +33,15 @@ export interface Room {
   status: 'idle' | 'active' | 'nearing' | 'overdue' | 'pausing' | 'completed'
 }
 
+export type LogAction = 'start' | 'evaluate' | 'remove' | 'pause' | 'resume' | 'complete' | 'remind' | 'notify_doctor'
+
 export interface OperationLog {
   id: string
   roomId: string
   customerId: string
-  action: 'start' | 'evaluate' | 'remove' | 'pause' | 'resume' | 'complete'
+  bodyPartId?: string
+  bodyPartName?: string
+  action: LogAction
   operator: string
   operatorRole: 'doctor' | 'nurse'
   timestamp: number

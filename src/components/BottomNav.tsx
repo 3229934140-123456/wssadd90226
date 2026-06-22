@@ -1,13 +1,14 @@
 import { NavLink } from 'react-router-dom'
-import { Users, Clock, ScanLine, CheckCircle, FileText, Settings } from 'lucide-react'
+import { Users, Clock, ScanLine, CheckCircle, FileText, Settings, LayoutGrid } from 'lucide-react'
 
 const navItems = [
-  { to: '/', icon: Users, label: '\u6392\u961F\u5899' },
-  { to: '/rooms', icon: Clock, label: '\u623F\u95F4\u8BA1\u65F6' },
-  { to: '/scan', icon: ScanLine, label: '\u626B\u7801\u5F00\u9EBB' },
-  { to: '/confirm-select', icon: CheckCircle, label: '\u5B8C\u6210\u786E\u8BA4' },
-  { to: '/records', icon: FileText, label: '\u4ECA\u65E5\u8BB0\u5F55' },
-  { to: '/settings', icon: Settings, label: '\u8BBE\u7F6E' },
+  { to: '/', icon: Users, label: '排队墙' },
+  { to: '/overview', icon: LayoutGrid, label: '值守总览' },
+  { to: '/rooms', icon: Clock, label: '房间计时' },
+  { to: '/scan', icon: ScanLine, label: '扫码开麻' },
+  { to: '/confirm-select', icon: CheckCircle, label: '完成确认' },
+  { to: '/records', icon: FileText, label: '今日记录' },
+  { to: '/settings', icon: Settings, label: '设置' },
 ]
 
 export default function BottomNav() {
@@ -20,7 +21,7 @@ export default function BottomNav() {
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-[52px] ${
+              `flex flex-col items-center justify-center gap-0.5 px-1.5 py-1 rounded-lg transition-colors min-w-[46px] ${
                 isActive
                   ? 'text-brand-mint'
                   : 'text-brand-text-muted hover:text-brand-text-dim'
@@ -29,8 +30,8 @@ export default function BottomNav() {
           >
             {({ isActive }) => (
               <>
-                <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                <span className={`text-[9px] font-medium leading-tight ${isActive ? 'text-brand-mint' : ''}`}>
+                <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                <span className={`text-[8px] font-medium leading-tight ${isActive ? 'text-brand-mint' : ''}`}>
                   {item.label}
                 </span>
               </>

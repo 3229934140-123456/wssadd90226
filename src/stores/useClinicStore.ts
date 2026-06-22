@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Room, Customer, BodyPart, OperationLog } from '@/types'
+import type { LogAction } from '@/types'
 import { generateId, getBodyPartStatus } from '@/utils/time'
 
 const DEFAULT_ROOMS: Room[] = [
@@ -23,7 +24,7 @@ interface ClinicState {
   customers: Customer[]
   operationLogs: OperationLog[]
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt' | 'queueStatus'>) => Customer
-  assignCustomerToRoom: (customerId: string, roomId: string, bodyParts: Omit<BodyPart, 'id' | 'status' | 'pausedDuration'>[]) => void
+  assignCustomerToRoom: (customerId: string, roomId: string, bodyParts: Omit<BodyPart, 'id' | 'status' | 'pausedDuration' | 'remindCount'>[]) => void
   updateRoomStatus: (roomId: string, status: Room['status']) => void
   updateBodyPartStatus: (customerId: string, bodyPartId: string, status: BodyPart['status']) => void
   evaluateBodyPart: (customerId: string, bodyPartId: string, operator: string) => void
@@ -32,6 +33,8 @@ interface ClinicState {
   resumeCustomer: (customerId: string) => void
   completeCustomer: (customerId: string) => void
   addLog: (log: Omit<OperationLog, 'id' | 'timestamp'>) => void
+  remindBodyPart: (customerId: string, bodyPartId: string, operator: string) => void
+  notifyDoctor: (customerId: string, bodyPartId: string, operator: string) => void
   getCustomerByRoom: (roomId: string) => Customer | undefined
   refreshRoomStatuses: () => void
   getTodayLogs: () => OperationLog[]
@@ -65,6 +68,7 @@ export const useClinicStore = create<ClinicState>()(
           status: 'active' as const,
           pausedDuration: 0,
           startTime: now,
+          remindCount: 0,
         }))
         set((s) => ({
           customers: s.customers.map((c) =>
@@ -76,7 +80,18 @@ export const useClinicStore = create<ClinicState>()(
             r.id === roomId ? { ...r, customerId, status: 'active' as const } : r
           ),
         }))
-        get().addLog({ roomId, customerId, action: 'start', operator: '\u62A4\u58EB', operatorRole: 'nurse' })
+        const customer = get().customers.find((c) => c.id === customerId)
+        bodyParts.forEach((bp) => {
+          get().addLog({
+            roomId,
+            customerId,
+            bodyPartId: bp.id,
+            bodyPartName: bp.name,
+            action: 'start',
+            operator: '\u62A4\u58EB',
+            operatorRole: 'nurse',
+          })
+        })
       },
 
       updateRoomStatus: (roomId, status) => {
@@ -114,8 +129,17 @@ export const useClinicStore = create<ClinicState>()(
           ),
         }))
         const customer = get().customers.find((c) => c.id === customerId)
-        if (customer) {
-          get().addLog({ roomId: customer.roomId, customerId, action: 'evaluate', operator, operatorRole: 'doctor' })
+        const bp = customer?.bodyParts.find((b) => b.id === bodyPartId)
+        if (customer && bp) {
+          get().addLog({
+            roomId: customer.roomId,
+            customerId,
+            bodyPartId,
+            bodyPartName: bp.name,
+            action: 'evaluate',
+            operator,
+            operatorRole: 'doctor',
+          })
         }
       },
 
@@ -135,10 +159,19 @@ export const useClinicStore = create<ClinicState>()(
           ),
         }))
         const customer = get().customers.find((c) => c.id === customerId)
-        if (customer) {
-          get().addLog({ roomId: customer.roomId, customerId, action: 'remove', operator, operatorRole: 'nurse' })
+        const bp = customer?.bodyParts.find((b) => b.id === bodyPartId)
+        if (customer && bp) {
+          get().addLog({
+            roomId: customer.roomId,
+            customerId,
+            bodyPartId,
+            bodyPartName: bp.name,
+            action: 'remove',
+            operator,
+            operatorRole: 'nurse',
+          })
           const updatedCustomer = get().customers.find((c) => c.id === customerId)
-          if (updatedCustomer && updatedCustomer.bodyParts.every((bp) => bp.status === 'completed')) {
+          if (updatedCustomer && updatedCustomer.bodyParts.every((b) => b.status === 'completed')) {
             get().completeCustomer(customerId)
           }
         }
@@ -165,7 +198,13 @@ export const useClinicStore = create<ClinicState>()(
         }))
         const customer = get().customers.find((c) => c.id === customerId)
         if (customer) {
-          get().addLog({ roomId: customer.roomId, customerId, action: 'pause', operator: '\u62A4\u58EB', operatorRole: 'nurse' })
+          get().addLog({
+            roomId: customer.roomId,
+            customerId,
+            action: 'pause',
+            operator: '\u62A4\u58EB',
+            operatorRole: 'nurse',
+          })
         }
       },
 
@@ -195,7 +234,13 @@ export const useClinicStore = create<ClinicState>()(
         }))
         const customer = get().customers.find((c) => c.id === customerId)
         if (customer) {
-          get().addLog({ roomId: customer.roomId, customerId, action: 'resume', operator: '\u62A4\u58EB', operatorRole: 'nurse' })
+          get().addLog({
+            roomId: customer.roomId,
+            customerId,
+            action: 'resume',
+            operator: '\u62A4\u58EB',
+            operatorRole: 'nurse',
+          })
         }
       },
 
@@ -214,7 +259,73 @@ export const useClinicStore = create<ClinicState>()(
         }))
         const customer = get().customers.find((c) => c.id === customerId)
         if (customer) {
-          get().addLog({ roomId: customer.roomId, customerId, action: 'complete', operator: '\u62A4\u58EB', operatorRole: 'nurse' })
+          get().addLog({
+            roomId: customer.roomId,
+            customerId,
+            action: 'complete',
+            operator: '\u62A4\u58EB',
+            operatorRole: 'nurse',
+          })
+        }
+      },
+
+      remindBodyPart: (customerId, bodyPartId, operator) => {
+        set((s) => ({
+          customers: s.customers.map((c) =>
+            c.id === customerId
+              ? {
+                  ...c,
+                  bodyParts: c.bodyParts.map((bp) =>
+                    bp.id === bodyPartId
+                      ? { ...bp, remindCount: bp.remindCount + 1 }
+                      : bp
+                  ),
+                }
+              : c
+          ),
+        }))
+        const customer = get().customers.find((c) => c.id === customerId)
+        const bp = customer?.bodyParts.find((b) => b.id === bodyPartId)
+        if (customer && bp) {
+          get().addLog({
+            roomId: customer.roomId,
+            customerId,
+            bodyPartId,
+            bodyPartName: bp.name,
+            action: 'remind' as LogAction,
+            operator,
+            operatorRole: 'nurse',
+          })
+        }
+      },
+
+      notifyDoctor: (customerId, bodyPartId, operator) => {
+        set((s) => ({
+          customers: s.customers.map((c) =>
+            c.id === customerId
+              ? {
+                  ...c,
+                  bodyParts: c.bodyParts.map((bp) =>
+                    bp.id === bodyPartId
+                      ? { ...bp, doctorNotifiedAt: Date.now() }
+                      : bp
+                  ),
+                }
+              : c
+          ),
+        }))
+        const customer = get().customers.find((c) => c.id === customerId)
+        const bp = customer?.bodyParts.find((b) => b.id === bodyPartId)
+        if (customer && bp) {
+          get().addLog({
+            roomId: customer.roomId,
+            customerId,
+            bodyPartId,
+            bodyPartName: bp.name,
+            action: 'notify_doctor' as LogAction,
+            operator,
+            operatorRole: 'nurse',
+          })
         }
       },
 
@@ -255,7 +366,7 @@ export const useClinicStore = create<ClinicState>()(
       },
 
       getTodayCustomers: () => {
-        return get().customers.filter((c) => isToday(c.createdAt))
+        return get().customers.filter((c) => isToday(c.createdAt) || c.queueStatus !== 'waiting')
       },
 
       clearOldRecords: () => {
@@ -266,8 +377,27 @@ export const useClinicStore = create<ClinicState>()(
       },
     }),
     {
-      name: 'anesthetimer-clinic',
-      version: 1,
+      name: 'anesthetimer-clinic-v2',
+      version: 2,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as {
+          customers?: Customer[]
+          operationLogs?: OperationLog[]
+          rooms?: Room[]
+        }
+        if (version < 2) {
+          if (state?.customers) {
+            state.customers = state.customers.map((c) => ({
+              ...c,
+              bodyParts: c.bodyParts.map((bp) => ({
+                ...bp,
+                remindCount: (bp as { remindCount?: number }).remindCount ?? 0,
+              })),
+            }))
+          }
+        }
+        return state
+      },
     }
   )
 )

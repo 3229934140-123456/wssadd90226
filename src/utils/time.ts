@@ -42,3 +42,7 @@ export function getBodyPartStatus(bp: { startTime: number; duration: number; sta
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
+
+export function getExpectedEndTime(bp: { startTime: number; duration: number; pausedDuration: number }): number {
+  return bp.startTime + bp.duration * 60000 + bp.pausedDuration
+}
