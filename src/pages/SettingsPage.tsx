@@ -1,6 +1,7 @@
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useClinicStore } from '@/stores/useClinicStore'
 import { DEFAULT_DURATIONS, BODY_PART_OPTIONS } from '@/types'
-import { Volume2, Eye, Moon, Clock, RotateCcw, Save } from 'lucide-react'
+import { Volume2, Eye, Moon, Clock, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 export default function SettingsPage() {
@@ -12,9 +13,10 @@ export default function SettingsPage() {
     setNightModeEnd,
     setDefaultDurations,
   } = useSettingsStore()
-
+  const clearOldRecords = useClinicStore((s) => s.clearOldRecords)
   const [durations, setDurations] = useState(settings.defaultDurations)
   const [saved, setSaved] = useState(false)
+  const [cleared, setCleared] = useState(false)
 
   function handleSaveDurations() {
     setDefaultDurations(durations)
@@ -186,7 +188,30 @@ export default function SettingsPage() {
       </div>
 
       <div className="text-center py-6 text-brand-text-muted text-[10px]">
-        {'\u6577\u9EBB\u8BA1\u65F6\u5668 v1.0 \u00B7 \u8F7B\u533B\u7F8E\u95E8\u5E97\u4E13\u7528'}
+        {'\u6577\u9EBB\u8BA1\u65F6\u5668 v1.1 \u00B7 \u8F7B\u533B\u7F8E\u95E8\u5E97\u4E13\u7528'}
+      </div>
+
+      <div className="rounded-xl border border-brand-coral/20 bg-brand-card p-4">
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-8 h-8 rounded-lg bg-brand-coral/15 flex items-center justify-center">
+            <Trash2 size={16} className="text-brand-coral" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-brand-text">{'\u6E05\u7406\u65E7\u6570\u636E'}</h3>
+            <p className="text-[10px] text-brand-text-muted">{'\u6E05\u9664\u975E\u4ECA\u65E5\u7684\u5DF2\u5B8C\u6210\u987E\u5BA2\u548C\u64CD\u4F5C\u8BB0\u5F55\uFF0C\u91CA\u653E\u5B58\u50A8\u7A7A\u95F4'}</p>
+          </div>
+        </div>
+        <button
+          onClick={() => { clearOldRecords(); setCleared(true); setTimeout(() => setCleared(false), 2000) }}
+          className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+            cleared
+              ? 'bg-brand-mint/20 text-brand-mint'
+              : 'bg-brand-coral/10 text-brand-coral hover:bg-brand-coral/20'
+          }`}
+        >
+          <Trash2 size={14} />
+          {cleared ? '\u2705 \u5DF2\u6E05\u7406' : '\u6E05\u7406\u65E7\u8BB0\u5F55'}
+        </button>
       </div>
     </div>
   )
